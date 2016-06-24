@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1, minimum-scale=1, maximum-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+    <meta charset="utf-8">
+    <title>Mapnik Demo</title>
+    <link rel="stylesheet" href="//js.arcgis.com/3.17/esri/css/esri.css">
+    <style>
+      html, body, #map {
+        overflow: hidden;
+        height: 100%;
+        width: 100%;
+        padding: 0;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script>
+      var base = location.href.replace(/\/[^/]+$/, '');
+      var dojoConfig = {
+        parseOnLoad: false,
+        async: true,
+        packages: [
+          { name: 'js', location: base + '/js' }
+        ],
+        deps: ['dojo/domReady!'],
+        callback: function () { require(['js/main']); }
+      };
+    </script>
+    <script src='//js.arcgis.com/3.17/init.js' async></script>
+  </body>
+</html>
