@@ -114,7 +114,7 @@ define([
     * Request the tile for the canvas
     */
     getTile: function getTileUrl (level, row, col, baseRow, baseCol) {
-      var url = 'http://wri-tiles.s3.amazonaws.com/glad_test/test2/' + level + '/' + col + '/' + row + '.png';
+      var url = '//wri-tiles.s3.amazonaws.com/glad_test/test2/' + level + '/' + col + '/' + row + '.png';
       var xhr = new XMLHttpRequest();
       var self = this;
 
