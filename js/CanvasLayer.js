@@ -14,8 +14,8 @@ define([
   /**
   * Calcualte the tile this latitude and level intersects
   */
-  var getTileRow = function getTileRow (tileInfo, level, latitude) {
-    var tileSizeInMapUnits = tileInfo.rows * tileInfo.lods[level].resolution;
+  var getTileRow = function getTileRow (tileInfo, level, latitude, resolution) {
+    var tileSizeInMapUnits = tileInfo.rows * resolution;
     var origin = tileInfo.origin.y;
     return Math.floor((origin - latitude) / tileSizeInMapUnits);
   };
@@ -23,8 +23,8 @@ define([
   /**
   * Calcualte the tile this longitude and level intersects
   */
-  var getTileColumn = function getTileColumn (tileInfo, level, longitude) {
-    var tileSizeInMapUnits = tileInfo.cols * tileInfo.lods[level].resolution;
+  var getTileColumn = function getTileColumn (tileInfo, level, longitude, resolution) {
+    var tileSizeInMapUnits = tileInfo.cols * resolution;
     var origin = tileInfo.origin.x;
     return Math.floor((longitude - origin) / tileSizeInMapUnits);
   };
@@ -92,17 +92,19 @@ define([
     },
 
     extentDidChange: function (evt) {
-      var level = this._map.getLevel();
+      var map = this._map;
+      var resolution = map.getResolution();
+      var level = map.getLevel();
       var extent = evt.extent;
       var lod = evt.lod;
       //- Clear the current context
       this.clearCanvas();
       //- Calculate start and end columns and rows
-      var colMin = getTileColumn(this._map.__tileInfo, level, extent.xmin);
-      var colMax = getTileColumn(this._map.__tileInfo, level, extent.xmax);
+      var colMin = getTileColumn(map.__tileInfo, level, extent.xmin, resolution);
+      var colMax = getTileColumn(map.__tileInfo, level, extent.xmax, resolution);
       //- These seem to be reversed for some reason, not sure why yet
-      var rowMin = getTileRow(this._map.__tileInfo, level, extent.ymax);
-      var rowMax = getTileRow(this._map.__tileInfo, level, extent.ymin);
+      var rowMin = getTileRow(map.__tileInfo, level, extent.ymax, resolution);
+      var rowMax = getTileRow(map.__tileInfo, level, extent.ymin, resolution);
       //- Get an array of stats containing the information needed to request tiles for this zoom and extent
       var stats = getTileStats(colMin, colMax, rowMin, rowMax, level);
       stats.forEach(function (stat) {
