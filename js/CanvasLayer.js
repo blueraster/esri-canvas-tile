@@ -32,20 +32,32 @@ define([
   /**
   * Takes min and max for columns and rows and returns an array of stats({x,y,z}) for tiles that I need to request
   */
-  var getTileStats = function (colMin, colMax, rowMin, rowMax, level) {
+  var getTileStats = function getTileStats (colMin, colMax, rowMin, rowMax, level) {
     var stats = [];
     for (var col = colMin; col <= colMax; col++) {
       for (var row = rowMin; row <= rowMax; row++) {
-        stats.push({
-          x: col,
-          y: row,
-          z: level
-        });
+        stats.push({ x: col, y: row, z: level });
       }
     }
     return stats;
   };
 
+  /**
+  * Get Longitude
+  * Taken from http://gis.stackexchange.com/questions/17278/calculate-lat-lon-bounds-for-individual-tile-generated-from-gdal2tiles
+  */
+  var longFromTilePosition = function longFromTilePosition (col, zoom) {
+    return col / Math.pow(2, zoom) * 360 - 180;
+  };
+
+  /**
+  * Get Latitude
+  * Taken from http://gis.stackexchange.com/questions/17278/calculate-lat-lon-bounds-for-individual-tile-generated-from-gdal2tiles
+  */
+  var latFromTilePosition = function latFromTilePosition (row, zoom) {
+    var n = Math.PI - Math.PI * 2 * row / Math.pow(2, zoom);
+    return (180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))));
+  };
 
   return declare('CanvasLayer', [Layer], {
 
@@ -55,6 +67,7 @@ define([
     */
     constructor: function constructor (options) {
       // Set loaded to true, and invoke the default Layer onLoad behavior
+      this.visible = options.visible || true;
       this.loaded = true;
       this.onLoad(this);
     },
@@ -70,7 +83,7 @@ define([
         id: 'CanvasLayer_canvas',
         width: map.width + 'px',
         height: map.height + 'px',
-        style: 'position:absolute;left:0;top:0;'
+        style: 'position:absolute;left:0;top:0;' + (this.visible ? 'display:block;' : 'display:none;')
       }, container);
 
       if (!this._element.getContext('2d')) {
@@ -78,7 +91,9 @@ define([
       }
 
       //- Set up a listener to fetch tiles
-      map.on('extent-change', this.extentDidChange.bind(this));
+      map.on('extent-change', this._update.bind(this));
+      //- Set up a listener to clear tiles
+      map.on('pan-start, zoom-start', this._clear.bind(this));
 
       return this._element;
     },
@@ -91,14 +106,53 @@ define([
       this._map = null;
     },
 
-    extentDidChange: function (evt) {
+    /**
+    * Public Method
+    * Override show method
+    */
+    show: function () {
+      if (this._element) {
+        this._element.style.display = 'block';
+        this.visible = true;
+        this._update();
+      }
+    },
+
+    /**
+    * Public Method
+    * Override hide method
+    */
+    hide: function () {
+      if (this._element) {
+        this._element.style.display = 'none';
+        this.visible = false;
+        //- Clear canvas as there is a good chance the map extent will change when this layer is hidden
+        //- and we do not want to flash old tiles on the canvas
+        this._clear();
+      }
+    },
+
+    /**
+    * Public Method
+    * Force Update the layer
+    */
+    forceUpdate: function () {
+      if (this._element && this.visible) {
+        this._clear();
+        this._update();
+      }
+    },
+
+    /**
+    * Internal method for updating the tiles
+    */
+    _update: function () {
+      //- Dont update if were hidden
+      if (!this.visible) { return; }
       var map = this._map;
       var resolution = map.getResolution();
       var level = map.getLevel();
-      var extent = evt.extent;
-      var lod = evt.lod;
-      //- Clear the current context
-      this.clearCanvas();
+      var extent = map.extent;
       //- Calculate start and end columns and rows
       var colMin = getTileColumn(map.__tileInfo, level, extent.xmin, resolution);
       var colMax = getTileColumn(map.__tileInfo, level, extent.xmax, resolution);
@@ -110,6 +164,18 @@ define([
       stats.forEach(function (stat) {
         this.getTile(stat.z, stat.y, stat.x, rowMin, colMin);
       }, this);
+    },
+
+    /**
+    * Internal method for clearing the tiles
+    */
+    _clear: function () {
+      //- Dont update if were hidden
+      if (!this.visible || !this._element) { return; }
+      //- Clear the current context
+      var canvas = this._element;
+      var context = canvas.getContext('2d');
+      context.clearRect(0, 0, canvas.width, canvas.height);
     },
 
     /**
@@ -134,18 +200,29 @@ define([
           var imageUrl = URL.createObjectURL(blob);
           var image = new Image();
           image.onload = function () {
-            self.drawToCanvas(image, self._element.getContext('2d'), rowFactor, colFactor);
+            self.drawToCanvas(image, self._element.getContext('2d'), row, col, level);
           };
           image.src = imageUrl;
         }
       };
     },
 
-    drawToCanvas: function (image, context, rowFactor, colFactor) {
-      var width = image.width;
+    /**
+    * Internal method to draw the tiles to the canvas
+    * 1. Determine the Lat/Long from the Tile's Rowm Col, and Zoom then,
+    * 2. Convert that to an ArcGIS point then,
+    * 3. Convert that to a screen position then,
+    * 4. Draw the tile at the screen position then,
+    * 5. Filter the data
+    */
+    drawToCanvas: function (image, context, row, col, level) {
+      var long = longFromTilePosition(col, level);
+      var lat = latFromTilePosition(row, level);
+      var screen = this._map.toScreen(new Point(long, lat));
       var height = image.height;
-      var x = height * colFactor;
-      var y = width * rowFactor;
+      var width = image.width;
+      var x = screen.x;
+      var y = screen.y;
       var imageData;
 
       context.drawImage(image, x, y);
@@ -155,17 +232,21 @@ define([
       context.putImageData(imageData, x, y);
     },
 
-    clearCanvas: function () {
-      var canvas = this._element;
-      var context = canvas.getContext('2d');
-      context.clearRect(0, 0, canvas.width, canvas.height);
-    },
-
+    /**
+    * Internal method for filtering the tiles
+    */
     filterData: function (data) {
       for (var i = 0; i < data.length; i += 4) {
         //- Remove No Data Pixels by setting the alpha to 0
         if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0) {
           data[i + 3] = 0;
+        } else {
+          // Make the pixel pink for glad alerts
+          // Note, this will possibly mess up the decode date functions as they decode information
+          // from the pixels
+          // data[i] = 255; // R
+          // data[i + 1] = 102; // G
+          // data[i + 2] = 153; // B
         }
       }
       return data;
