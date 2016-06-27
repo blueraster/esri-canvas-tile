@@ -59,6 +59,50 @@ define([
     return (180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))));
   };
 
+  /**
+  * Decode Dates from raw data
+  * Pixel is an array of values representing the rgba of the pixel
+  */
+  var decodeDate = function decodeDate (pixel) {
+    // Find the total days of the pixel by multiplying the red band by 255 and adding the green band
+    var totalDays = (pixel[0] * 255) + pixel[1];
+    // Dived the total days by 365 to get the year offset, add 15 to this to get current year
+    // Example, parseInt(totalDays / 365) = 1, add 15, year is 2016
+    var yearAsInt = parseInt(totalDays / 365) + 15;
+    // Multiple by 1000 to get in YYDDD format, i.e. 15000 or 16000
+    var year = yearAsInt * 1000;
+    // Add the remaining days to get the julian day for that year
+    var julianDay = totalDays % 365;
+    // Add julian to year to get the data value
+    var date = year + julianDay;
+    // Convert the blue band to a string and pad with 0's to three digits
+    // It's rarely not three digits, except for cases where there is an intensity value and no date/confidence.
+    // This is due to bilinear resampling
+    var band3Str = pad(pixel[2]);
+    // Parse confidence, confidence is stored as 1/2, subtract 1 so it's values are 0/1
+    var confidence = parseInt(band3Str) - 1;
+    // Parse raw intensity to make it visible, it is the second and third character in blue band, it's range is 1 - 55
+    var rawIntensity = parseInt(band3Str.slice(1, 3));
+    // Scale it to make it visible
+    var intensity = rawIntensity * 50;
+    // Prevent intensity from being higher then the max value
+    if (intensity > 255) { intensity = 255; }
+    // Return all components needed for filtering/labeling
+    return {
+      confidence: confidence,
+      intensity: intensity,
+      date: date
+    };
+  };
+
+  /**
+  * Simple pad function to force numbers to be at least 3 digits
+  */
+  var pad = function pad (number) {
+    var str = '00' + number;
+    return str.slice(str.length - 3);
+  };
+
   return declare('CanvasLayer', [Layer], {
 
     /**
@@ -66,7 +110,10 @@ define([
     * Make sure to set loaded and triger parent onLoad
     */
     constructor: function constructor (options) {
-      // Set loaded to true, and invoke the default Layer onLoad behavior
+      // Set defaults for this layer that are specific to this layer
+      this.minDateValue = 15000;
+      this.maxDateValue = 16365;
+      // Set some esri defaults, and invoke the default Layer onLoad behavior
       this.visible = options.visible || true;
       this.loaded = true;
       this.onLoad(this);
@@ -234,19 +281,24 @@ define([
 
     /**
     * Internal method for filtering the tiles
+    * TODO: Move this out of the module and make a private function, inject all neceeary dependencies
     */
     filterData: function (data) {
       for (var i = 0; i < data.length; i += 4) {
-        //- Remove No Data Pixels by setting the alpha to 0
-        if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0) {
-          data[i + 3] = 0;
-        } else {
+        // Decode the rgba/pixel so I can filter on confidence and date ranges
+        var values = decodeDate(data.slice(i, i + 4));
+        //- Check against confidence, min date, and max date
+        if (values.date >= this.minDateValue && values.date <= this.maxDateValue) {
+          // Set the alpha to the intensity
+          data[i + 3] = values.intensity;
           // Make the pixel pink for glad alerts
-          // Note, this will possibly mess up the decode date functions as they decode information
-          // from the pixels
+          // Note, this may mess up the decode date function if it's called at a future date as the decoded information comes from the pixel
           // data[i] = 255; // R
           // data[i + 1] = 102; // G
           // data[i + 2] = 153; // B
+        } else {
+          // Hide the pixel
+          data[i + 3] = 0;
         }
       }
       return data;
