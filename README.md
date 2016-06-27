@@ -31,6 +31,7 @@ For a working leaflet version, See [https://blueraster.github.io/esri-canvas-til
 ### Known Issues
 - Setting the color of the pixels to anything
   - We are extracting information from the raw pixel data, which is in rgba format, if we modify the rgb values to set the color, we lose the data.  We need that data to decode it and retrieve date/confidence information.
+- The data seems to stop rendering after zoom level 12.
 
 ### TODOS
  - Add in data decoding functions
