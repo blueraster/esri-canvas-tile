@@ -28,6 +28,26 @@ For a working leaflet version, See [https://blueraster.github.io/esri-canvas-til
 `canvasLayer.forceUpdate()`
 - Force the canvas to clear the tiles and fetch new tiles
 
+##### setConfidenceLevel
+`canvasLayer.setConfidenceLevel(confidence)`
+- Set's the desired confidence level for the layer
+- Sole argument is a string with value of either `all` or `confirmed`.
+
+##### setMinimumDate
+`canvasLayer.setMinimumDate(minDate)`
+- Set's the minimum date for the layer
+- Currently must be in numeric format where 15000 is the base, then add the number of days to it
+
+##### setMaximumDate
+`canvasLayer.setMaximumDate(maxDate)`
+- Set's the maximum date level for the layer
+- Currently must be in numeric format where 15000 is the base, then add the number of days to it
+
+##### setDateRange
+`canvasLayer.setDateRange(minDate, maxDate)`
+- Set's the minimum and maximum date level for the layer
+- Currently must be in numeric format where 15000 is the base, then add the number of days to it
+
 ### Known Issues
 - Setting the color of the pixels to anything
   - We are extracting information from the raw pixel data, which is in rgba format, if we modify the rgb values to set the color, we lose the data.  We need that data to decode it and retrieve date/confidence information.

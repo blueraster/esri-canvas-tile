@@ -6,6 +6,7 @@
     <meta charset="utf-8">
     <title>Esri - Canvas/Tile Layer</title>
     <link rel="stylesheet" href="//js.arcgis.com/3.17/esri/css/esri.css">
+    <link rel="stylesheet" href="//js.arcgis.com/3.17/dijit/themes/claro/claro.css">
     <style>
       html, body, #map {
         overflow: hidden;
@@ -14,10 +15,43 @@
         padding: 0;
         margin: 0;
       }
+      .controls {
+        position: absolute;
+        background: white;
+        z-index: 5;
+        right: 1.5em;
+        top: 1.5em;
+      }
+      .date-slider-container {
+        margin: 1em;
+      }
+      .confidence-level-container {
+        justify-content: center;
+        display: flex;
+        margin: 1em;
+      }
+      .confidence-level-container label {
+        padding-right: 0.5em;
+      }
     </style>
   </head>
-  <body>
-    <div id="map"></div>
+  <body class='claro'>
+    <div id="map">
+      <div class="controls">
+        <div class='date-slider-container'>
+          <div class="start-date"></div>
+          <div class="end-date"></div>
+          <div id="date-slider"></div>
+        </div>
+        <div class="confidence-level-container">
+          <label for="confidence-level">Confidence Level: </label>
+          <select id="confidence-level">
+            <option value="all">All</option>
+            <option value="confirmed">Confirmed only</option>
+          </select>
+        </div>
+      </div>
+    </div>
     <script>
       var base = location.href.replace(/\/[^/]+$/, '');
       var dojoConfig = {

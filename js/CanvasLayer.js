@@ -80,7 +80,7 @@ define([
     // This is due to bilinear resampling
     var band3Str = pad(pixel[2]);
     // Parse confidence, confidence is stored as 1/2, subtract 1 so it's values are 0/1
-    var confidence = parseInt(band3Str) - 1;
+    var confidence = parseInt(band3Str[0]) - 1;
     // Parse raw intensity to make it visible, it is the second and third character in blue band, it's range is 1 - 55
     var rawIntensity = parseInt(band3Str.slice(1, 3));
     // Scale it to make it visible
@@ -96,6 +96,13 @@ define([
   };
 
   /**
+  * Return an array of confidence values
+  */
+  var confidenceValues = function confidenceValues (confidenceLevel) {
+    return confidenceLevel === DEFAULT.confidence ? [0, 1] : [0];
+  };
+
+  /**
   * Simple pad function to force numbers to be at least 3 digits
   */
   var pad = function pad (number) {
@@ -103,16 +110,37 @@ define([
     return str.slice(str.length - 3);
   };
 
-  return declare('CanvasLayer', [Layer], {
+  /**
+  * Defaults
+  */
+  var DEFAULT = {
+    confidence: 'all', // 'all' or 'confirmed'
+    minDate: 15000,
+    maxDate: 16365
+  };
 
+  return declare('CanvasLayer', [Layer], {
     /**
-    * Override Esri Constructor
-    * Make sure to set loaded and triger parent onLoad
+    * @description Override Esri Constructor
+    * Make sure to set loaded and trigger parent onLoad
     */
     constructor: function constructor (options) {
       // Set defaults for this layer that are specific to this layer
-      this.minDateValue = 15000;
-      this.maxDateValue = 16365;
+      /**
+      * Tile Cache Properties
+      * Type: <string, object>
+      * KeyFormat: row:col:level
+      * ValueType: {
+      *   x: number
+      *   y: number
+      *   height: number
+      *   width: number
+      * }
+      */
+      // this._tileCache = {};
+      this.minDateValue = DEFAULT.minDate;
+      this.maxDateValue = DEFAULT.maxDate;
+      this.confidence = DEFAULT.confidence;
       // Set some esri defaults, and invoke the default Layer onLoad behavior
       this.visible = options.visible || true;
       this.loaded = true;
@@ -120,8 +148,7 @@ define([
     },
 
     /**
-    * Override Esri _setMap
-    * Called when the layer is added to the map
+    * @description Override _setMap method, called when the layer is added to the map
     */
     _setMap: function _setMap (map, container) {
       this._map = map;
@@ -146,8 +173,7 @@ define([
     },
 
     /**
-    * Override Esri _unsetMap
-    * Called when the layer is removed from the map
+    * @description Override _unsetMap method, called when the layer is removed from the map
     */
     _unsetMap: function _unsetMap (map, container) {
       this._map = null;
@@ -155,7 +181,7 @@ define([
 
     /**
     * Public Method
-    * Override show method
+    * @description Override show method
     */
     show: function () {
       if (this._element) {
@@ -167,7 +193,7 @@ define([
 
     /**
     * Public Method
-    * Override hide method
+    * @description Override hide method
     */
     hide: function () {
       if (this._element) {
@@ -180,8 +206,8 @@ define([
     },
 
     /**
-    * Public Method
-    * Force Update the layer
+    * Public Method - forceUpdate
+    * @description Force Update the layer
     */
     forceUpdate: function () {
       if (this._element && this.visible) {
@@ -191,7 +217,49 @@ define([
     },
 
     /**
-    * Internal method for updating the tiles
+    * Public Method - setConfidenceLevel
+    * @description Set the confidence level and redraw tiles from cache
+    * @param {string} confidence - New confidence setting
+    */
+    setConfidenceLevel: function (confidence) {
+      this.confidence = confidence;
+      this._update();
+    },
+
+    /**
+    * Public Method - setMinimumDate
+    * @description Set the minimum date and redraw tiles from cache
+    * @param {number} date - New minimum date setting
+    */
+    setMinimumDate: function (date) {
+      this.minDateValue = parseInt(date);
+      this._update();
+    },
+
+    /**
+    * Public Method - setMaximumDate
+    * @description Set the maximum date and redraw tiles from cache
+    * @param {number} date - New maximum date setting
+    */
+    setMaximumDate: function (date) {
+      this.maxDateValue = parseInt(date);
+      this._update();
+    },
+
+    /**
+    * Public Method - setDateRange
+    * @description Set the range of dates and redraw tiles from cache
+    * @param {number} date - New maximum date setting
+    * @param {number} date - New maximum date setting
+    */
+    setDateRange: function (minDate, maxDate) {
+      this.minDateValue = parseInt(minDate);
+      this.maxDateValue = parseInt(maxDate);
+      this._update();
+    },
+
+    /**
+    * @description Internal method for updating the tiles
     */
     _update: function () {
       //- Dont update if were hidden
@@ -214,7 +282,7 @@ define([
     },
 
     /**
-    * Internal method for clearing the tiles
+    * @description Internal method for clearing the tiles
     */
     _clear: function () {
       //- Dont update if were hidden
@@ -226,7 +294,7 @@ define([
     },
 
     /**
-    * Request the tile for the canvas
+    * @description Request the tiles needed for the current extent and draw them to the canvas
     */
     getTile: function getTileUrl (level, row, col, baseRow, baseCol) {
       var url = '//wri-tiles.s3.amazonaws.com/glad_test/test2/' + level + '/' + col + '/' + row + '.png';
@@ -255,7 +323,7 @@ define([
     },
 
     /**
-    * Internal method to draw the tiles to the canvas
+    * @description Internal method to draw the tiles to the canvas
     * 1. Determine the Lat/Long from the Tile's Rowm Col, and Zoom then,
     * 2. Convert that to an ArcGIS point then,
     * 3. Convert that to a screen position then,
@@ -266,29 +334,53 @@ define([
       var long = longFromTilePosition(col, level);
       var lat = latFromTilePosition(row, level);
       var screen = this._map.toScreen(new Point(long, lat));
+      var confidence = confidenceValues(this.confidence);
       var height = image.height;
       var width = image.width;
       var x = screen.x;
       var y = screen.y;
       var imageData;
 
+      //- Update the local cache of the positions of the tiles, this way I can redraw them efficiently without
+      //- having to request the tiles again
+      // var key = [row, col, level].join(':');
+      // this._tileCache[key] = { x: x, y: y, height: height, width: width };
+
       context.drawImage(image, x, y);
       //- Get the image data
       imageData = context.getImageData(x, y, width, height);
-      imageData.data = this.filterData(imageData.data);
+      imageData.data = this.filterData(imageData.data, confidence);
       context.putImageData(imageData, x, y);
     },
 
+    // /**
+    // * @description Internal method to redraw the tiles to the canvas from the cache
+    // */
+    // redrawTiles: function () {
+    //   var context = this._element.getContext('2d');
+    //
+    //   Object.keys(this._tileCache).forEach(function (key) {
+    //     var tileInfo = this._tileCache[key];
+    //     var imageData = context.getImageData(tileInfo.x, tileInfo.y, tileInfo.width, tileInfo.height);
+    //     imageData.data = this.filterData(imageData.data);
+    //     context.putImageData(imageData, tileInfo.x, tileInfo.y);
+    //   }, this);
+    // },
+
     /**
-    * Internal method for filtering the tiles
+    * @description Internal method for filtering the tiles
     * TODO: Move this out of the module and make a private function, inject all neceeary dependencies
     */
-    filterData: function (data) {
+    filterData: function (data, confidence) {
       for (var i = 0; i < data.length; i += 4) {
         // Decode the rgba/pixel so I can filter on confidence and date ranges
         var values = decodeDate(data.slice(i, i + 4));
         //- Check against confidence, min date, and max date
-        if (values.date >= this.minDateValue && values.date <= this.maxDateValue) {
+        if (
+          values.date >= this.minDateValue &&
+          values.date <= this.maxDateValue &&
+          confidence.indexOf(values.confidence) > -1
+        ) {
           // Set the alpha to the intensity
           data[i + 3] = values.intensity;
           // Make the pixel pink for glad alerts
