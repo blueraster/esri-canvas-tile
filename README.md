@@ -21,7 +21,7 @@ For a working leaflet version, See [https://blueraster.github.io/esri-canvas-til
 - Show the layer
 
 ##### hide
-`canvasLayer.show()`
+`canvasLayer.hide()`
 - Hide the layer
 
 ##### forceUpdate
