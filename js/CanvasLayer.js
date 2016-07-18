@@ -385,9 +385,9 @@ define([
           data[i + 3] = values.intensity;
           // Make the pixel pink for glad alerts
           // Note, this may mess up the decode date function if it's called at a future date as the decoded information comes from the pixel
-          // data[i] = 255; // R
-          // data[i + 1] = 102; // G
-          // data[i + 2] = 153; // B
+          data[i] = 220; // R
+          data[i + 1] = 102; // G
+          data[i + 2] = 153; // B
         } else {
           // Hide the pixel
           data[i + 3] = 0;
