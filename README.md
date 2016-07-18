@@ -49,12 +49,8 @@ For a working leaflet version, See [https://blueraster.github.io/esri-canvas-til
 - Currently must be in numeric format where 15000 is the base, then add the number of days to it
 
 ### Known Issues
-- Setting the color of the pixels to anything
-  - We are extracting information from the raw pixel data, which is in rgba format, if we modify the rgb values to set the color, we lose the data.  We need that data to decode it and retrieve date/confidence information.
-- The data seems to stop rendering after zoom level 12.
+- The data seems to stop rendering after zoom level 12. Will need to scale tiles appropriately
 
 ### TODOS
- - Add in data decoding functions
- - Add formatting functions to take the decoded data and export it in various formats
  - Look into various methods for optimizations, such as caching, and client side re-rendering of pixel data when filters are applied.
  - Investigate work arounds for the [Known Issues](#known-issues) above

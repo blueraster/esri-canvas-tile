@@ -7,6 +7,11 @@ define([
   'esri/SpatialReference'
 ], function (declare, domConsruct, Layer, Point, screenUtils, SpatialReference) {
 
+  // TODO: EXPLORE THE FOLLOWING
+  // https://github.com/Vizzuality/gfw/blob/90918be507a9c39956f9375010b161a2c7b4c560/app/assets/javascripts/abstract/layer/CanvasLayerClass.js
+  // _drawCanvasImage, spicifically tile scaling, for upscaling tiles so they appear below zoom level 12
+  // _getTileCoords, for determining which tiles to request if the zoom level is greater than the max zoom level
+
   /**
   * Helper Functions for fetching tiles
   */
