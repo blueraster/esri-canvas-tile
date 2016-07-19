@@ -121,7 +121,8 @@ define([
   var DEFAULT = {
     confidence: 'all', // 'all' or 'confirmed'
     minDate: 15000,
-    maxDate: 16365
+    maxDate: 16365,
+    maxZoom: 12
   };
 
   return declare('CanvasLayer', [Layer], {
@@ -143,9 +144,10 @@ define([
       * }
       */
       // this._tileCache = {};
-      this.minDateValue = DEFAULT.minDate;
-      this.maxDateValue = DEFAULT.maxDate;
-      this.confidence = DEFAULT.confidence;
+      this.dataMaxZoom = options.maxZoom || DEFAULT.maxZoom;
+      this.minDateValue = options.minDate || DEFAULT.minDate;
+      this.maxDateValue = options.maxDate || DEFAULT.maxDate;
+      this.confidence = options.confidence || DEFAULT.confidence;
       // Set some esri defaults, and invoke the default Layer onLoad behavior
       this.visible = options.visible || true;
       this.loaded = true;
@@ -280,9 +282,20 @@ define([
       var rowMin = getTileRow(map.__tileInfo, level, extent.ymax, resolution);
       var rowMax = getTileRow(map.__tileInfo, level, extent.ymin, resolution);
       //- Get an array of stats containing the information needed to request tiles for this zoom and extent
+      //- Alter the tile coordinates if we are past zoom level 12
+      if (level > this.dataMaxZoom) {
+        var mins = this._getTileCoordinates(this.dataMaxZoom, colMin, rowMin, level);
+        var maxs = this._getTileCoordinates(this.dataMaxZoom, colMax, rowMax, level);
+        level = this.dataMaxZoom;
+        colMin = mins[0];
+        rowMin = mins[1];
+        colMax = maxs[0];
+        rowMax = maxs[1];
+      }
+
       var stats = getTileStats(colMin, colMax, rowMin, rowMax, level);
       stats.forEach(function (stat) {
-        this.getTile(stat.z, stat.y, stat.x, rowMin, colMin);
+        this._getTile(stat.x, stat.y, stat.z);
       }, this);
     },
 
@@ -301,14 +314,10 @@ define([
     /**
     * @description Request the tiles needed for the current extent and draw them to the canvas
     */
-    getTile: function getTileUrl (level, row, col, baseRow, baseCol) {
+    _getTile: function getTileUrl (col, row, level) {
       var url = '//wri-tiles.s3.amazonaws.com/glad_test/test2/' + level + '/' + col + '/' + row + '.png';
       var xhr = new XMLHttpRequest();
       var self = this;
-
-      // I need to calculate the factor to multiple 256 by to determint the tile position
-      var rowFactor = row - baseRow;
-      var colFactor = col - baseCol;
 
       xhr.responseType = 'arraybuffer';
       xhr.open('GET', url, true);
@@ -320,11 +329,25 @@ define([
           var imageUrl = URL.createObjectURL(blob);
           var image = new Image();
           image.onload = function () {
-            self.drawToCanvas(image, self._element.getContext('2d'), row, col, level);
+            self._drawToCanvas(image, self._element.getContext('2d'), row, col, level);
           };
           image.src = imageUrl;
         }
       };
+    },
+
+    /**
+    * @description Get tile coordinates, if we are not past max zoom, just return the current coords
+    * @param {number} maxZoom - Maximum zoom allowed with this layer
+    * @param {number} x - Column number of tile
+    * @param {number} y - Row number of tile
+    * @param {number} z - Current zoom level of the map
+    * @return {number[]} - returns a tuple containing [x, y, z]
+    */
+    _getTileCoordinates: function (maxZoom, x, y, z) {
+      x = Math.floor(x / Math.pow(2, z - maxZoom));
+      y = Math.floor(y / Math.pow(2, z - maxZoom));
+      return [x, y];
     },
 
     /**
@@ -335,7 +358,7 @@ define([
     * 4. Draw the tile at the screen position then,
     * 5. Filter the data
     */
-    drawToCanvas: function (image, context, row, col, level) {
+    _drawToCanvas: function (image, context, row, col, level) {
       var long = longFromTilePosition(col, level);
       var lat = latFromTilePosition(row, level);
       var screen = this._map.toScreen(new Point(long, lat));
@@ -351,26 +374,23 @@ define([
       // var key = [row, col, level].join(':');
       // this._tileCache[key] = { x: x, y: y, height: height, width: width };
 
-      context.drawImage(image, x, y);
+      //- If we are past max zoom, we need to scale up the image
+      if (this._map.getLevel() > this.dataMaxZoom) {
+        // TODO: NEED NEW MATH
+        var steps = this._map.getLevel() - this.dataMaxZoom;
+        // x = (256 / Math.pow(2, steps) * (x % Math.pow(2, steps)));
+        // y = (256 / Math.pow(2, steps) * (y % Math.pow(2, steps)));
+        width = 256 / Math.pow(2, steps);
+        height = 256 / Math.pow(2, steps);
+        console.log(x, y, width, height);
+      }
+
+      context.drawImage(image, x, y, width, height);
       //- Get the image data
       imageData = context.getImageData(x, y, width, height);
       imageData.data = this.filterData(imageData.data, confidence);
       context.putImageData(imageData, x, y);
     },
-
-    // /**
-    // * @description Internal method to redraw the tiles to the canvas from the cache
-    // */
-    // redrawTiles: function () {
-    //   var context = this._element.getContext('2d');
-    //
-    //   Object.keys(this._tileCache).forEach(function (key) {
-    //     var tileInfo = this._tileCache[key];
-    //     var imageData = context.getImageData(tileInfo.x, tileInfo.y, tileInfo.width, tileInfo.height);
-    //     imageData.data = this.filterData(imageData.data);
-    //     context.putImageData(imageData, tileInfo.x, tileInfo.y);
-    //   }, this);
-    // },
 
     /**
     * @description Internal method for filtering the tiles

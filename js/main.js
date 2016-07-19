@@ -17,6 +17,8 @@ define([
 
   map.addLayer(gladLayer);
 
+  map.on('zoom-end', function () { console.log('Current zoom level: %s', map.getLevel()); });
+
   /**
   * Helper to show the dates in the UI
   */
