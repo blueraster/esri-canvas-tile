@@ -302,20 +302,20 @@ define([
         //- Scale the tile if we are past maxZoom
         if (realZoom > this.options.maxZoom) {
           steps = this._getZoomSteps(realZoom);
-          sX = (256 / Math.pow(2, steps) * (canvasData.x % Math.pow(2, steps)));
-          sY = (256 / Math.pow(2, steps) * (canvasData.y % Math.pow(2, steps)));
-          sWidth = (256 / Math.pow(2, steps));
-          sHeight = (256 / Math.pow(2, steps));
+          // sX = (256 / Math.pow(2, steps) * (canvasData.x % Math.pow(2, steps)));
+          // sY = (256 / Math.pow(2, steps) * (canvasData.y % Math.pow(2, steps)));
+          // sWidth = (256 / Math.pow(2, steps));
+          // sHeight = (256 / Math.pow(2, steps));
 
           canvas.height = canvas.width = (256 * Math.pow(2, steps));
-          // canvasData.image.style.width = (256 * Math.pow(2, steps));
-          // canvasData.image.style.height = (256 * Math.pow(2, steps));
-          // context.imageSmoothingEnabled = false;
-          // context.mozImageSmoothingEnabled = false;
-          // context.drawImage(canvasData.image, 0, 0, canvas.width, canvas.height);
+          canvasData.image.style.width = (256 * Math.pow(2, steps));
+          canvasData.image.style.height = (256 * Math.pow(2, steps));
           context.imageSmoothingEnabled = false;
           context.mozImageSmoothingEnabled = false;
-          context.drawImage(canvasData.image, sX, sY, sWidth, sHeight, 0, 0, 256, 256);
+          context.drawImage(canvasData.image, 0, 0, canvas.width, canvas.height);
+          // context.imageSmoothingEnabled = false;
+          // context.mozImageSmoothingEnabled = false;
+          // context.drawImage(canvasData.image, sX, sY, sWidth, sHeight, 0, 0, 256, 256);
         } else {
           context.drawImage(canvasData.image, 0, 0);
         }
