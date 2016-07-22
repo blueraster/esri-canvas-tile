@@ -1,9 +1,10 @@
 define([
   'esri/map',
   'js/CanvasLayer',
+  'js/TileCanvasLayer',
   'dojox/form/HorizontalRangeSlider',
   'dojo/domReady!'
-], function (EsriMap, CanvasLayer, RangeSlider) {
+], function (EsriMap, CanvasLayer, TileCanvasLayer, RangeSlider) {
 
   var map = new EsriMap('map', {
     center: [113.763, 0.334],
@@ -15,7 +16,11 @@ define([
     id: 'gladLayer'
   });
 
-  map.addLayer(gladLayer);
+  var testLayer = new TileCanvasLayer({
+    id: 'testLayer'
+  });
+
+  map.addLayers([testLayer]);
 
   map.on('zoom-end', function () { console.log('Current zoom level: %s', map.getLevel()); });
 
@@ -51,7 +56,8 @@ define([
       presentDatesForUser('.end-date', toJulian.toString());
 
       // Update the layer
-      gladLayer.setDateRange(fromJulian, toJulian);
+      // gladLayer.setDateRange(fromJulian, toJulian);
+      testLayer.setDateRange(fromJulian, toJulian);
     }
   }, 'date-slider');
 

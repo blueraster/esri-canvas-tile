@@ -19,7 +19,7 @@ define([
   /**
   * Calcualte the tile this latitude and level intersects
   */
-  var getTileRow = function getTileRow (tileInfo, level, latitude, resolution) {
+  var getTileRow = function getTileRow (tileInfo, latitude, resolution) {
     var tileSizeInMapUnits = tileInfo.rows * resolution;
     var origin = tileInfo.origin.y;
     return Math.floor((origin - latitude) / tileSizeInMapUnits);
@@ -28,7 +28,7 @@ define([
   /**
   * Calcualte the tile this longitude and level intersects
   */
-  var getTileColumn = function getTileColumn (tileInfo, level, longitude, resolution) {
+  var getTileColumn = function getTileColumn (tileInfo, longitude, resolution) {
     var tileSizeInMapUnits = tileInfo.cols * resolution;
     var origin = tileInfo.origin.x;
     return Math.floor((longitude - origin) / tileSizeInMapUnits);
@@ -276,11 +276,11 @@ define([
       var level = map.getLevel();
       var extent = map.extent;
       //- Calculate start and end columns and rows
-      var colMin = getTileColumn(map.__tileInfo, level, extent.xmin, resolution);
-      var colMax = getTileColumn(map.__tileInfo, level, extent.xmax, resolution);
+      var colMin = getTileColumn(map.__tileInfo, extent.xmin, resolution);
+      var colMax = getTileColumn(map.__tileInfo, extent.xmax, resolution);
       //- These seem to be reversed for some reason, not sure why yet
-      var rowMin = getTileRow(map.__tileInfo, level, extent.ymax, resolution);
-      var rowMax = getTileRow(map.__tileInfo, level, extent.ymin, resolution);
+      var rowMin = getTileRow(map.__tileInfo, extent.ymax, resolution);
+      var rowMax = getTileRow(map.__tileInfo, extent.ymin, resolution);
       //- Get an array of stats containing the information needed to request tiles for this zoom and extent
       //- Alter the tile coordinates if we are past zoom level 12
       if (level > this.dataMaxZoom) {
@@ -376,13 +376,14 @@ define([
 
       //- If we are past max zoom, we need to scale up the image
       if (this._map.getLevel() > this.dataMaxZoom) {
-        // TODO: NEED NEW MATH
         var steps = this._map.getLevel() - this.dataMaxZoom;
         // x = (256 / Math.pow(2, steps) * (x % Math.pow(2, steps)));
         // y = (256 / Math.pow(2, steps) * (y % Math.pow(2, steps)));
-        width = 256 / Math.pow(2, steps);
-        height = 256 / Math.pow(2, steps);
-        console.log(x, y, width, height);
+        width = 256 * Math.pow(2, steps);
+        height = 256 * Math.pow(2, steps);
+        // disable pic enhancement
+        context.imageSmoothingEnabled = false;
+        context.mozImageSmoothingEnabled = false;
       }
 
       context.drawImage(image, x, y, width, height);
@@ -397,6 +398,7 @@ define([
     * TODO: Move this out of the module and make a private function, inject all neceeary dependencies
     */
     filterData: function (data, confidence) {
+      console.log(data.length);
       for (var i = 0; i < data.length; i += 4) {
         // Decode the rgba/pixel so I can filter on confidence and date ranges
         var values = decodeDate(data.slice(i, i + 4));

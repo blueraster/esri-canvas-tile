@@ -1,0 +1,426 @@
+/**
+* Base canvas layer module
+* @return TileCanvasLayer {class} (extends esri/layers/layer)
+*/
+define([
+  'dojo/_base/lang',
+  'dojo/_base/declare',
+  'dojo/dom-construct',
+  'esri/layers/layer',
+  'esri/geometry/Point',
+  'esri/geometry/screenUtils',
+  'esri/SpatialReference'
+], function (lang, declare, domConstruct, Layer, Point, screenUtils, SpatialReference) {
+
+  /**
+  * This may need to change if the spatial reference is not
+  */
+  var TILE_INFO = {
+    rows: 256,
+    cols: 256,
+    origin: {
+      x: -20037508.34,
+      y: 20037508.34
+    }
+  };
+
+  /**
+  * @description Simple check for canvas support
+  * @return {boolean}
+  */
+  function supportsCanvas () {
+    var canvas = document.createElement('canvas');
+    return canvas && canvas.getContext && canvas.getContext('2d');
+  }
+
+  /**
+  * @description Calculate the tile row this should reside in
+  * @return {number} tile coordinate
+  */
+  function getRow (yValue, resolution) {
+    var sizeInMapUnits = TILE_INFO.rows * resolution;
+    return Math.floor((TILE_INFO.origin.y - yValue) / sizeInMapUnits);
+  }
+
+  /**
+  * @description Calculate the tile column this should reside in
+  * @return {number} tile coordinate
+  */
+  function getColumn (xValue, resolution) {
+    var sizeInMapUnits = TILE_INFO.rows * resolution;
+    return Math.floor((xValue - TILE_INFO.origin.x) / sizeInMapUnits);
+  }
+
+  /**
+  * @description Get an array of tile infos so I know what tiles are needed for this extent
+  * @return {object[]} - array of objects containing the x, y, and z properties
+  */
+  function getTileInfos (rowMin, colMin, rowMax, colMax, level) {
+    var infos = [], row, col;
+    for (col = colMin; col <= colMax; col++) {
+      for (row = rowMin; row <= rowMax; row++) {
+        infos.push({ x: col, y: row, z: level });
+      }
+    }
+    return infos;
+  }
+
+  /**
+  * Taken from http://gis.stackexchange.com/questions/17278/calculate-lat-lon-bounds-for-individual-tile-generated-from-gdal2tiles
+  * @description Get the longitude for the top left corner of the tile
+  * @return {number} longitude
+  */
+  function getLongFromTile (col, zoom) {
+    return col / Math.pow(2, zoom) * 360 - 180;
+  }
+
+  /**
+  * Taken from http://gis.stackexchange.com/questions/17278/calculate-lat-lon-bounds-for-individual-tile-generated-from-gdal2tiles
+  * @description Get the latitude for the top left corner of the tile
+  * @return {number} latitude
+  */
+  function getLatFromTile (row, zoom) {
+    var n = Math.PI - Math.PI * 2 * row / Math.pow(2, zoom);
+    return (180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))));
+  }
+
+
+  /**
+  * @description Decode Dates from raw data
+  * @param {number[]} pixel - Pixel is an array of values representing the rgba of the pixel
+  */
+  var decodeDate = function decodeDate (pixel) {
+    // Find the total days of the pixel by multiplying the red band by 255 and adding the green band
+    var totalDays = (pixel[0] * 255) + pixel[1];
+    // Dived the total days by 365 to get the year offset, add 15 to this to get current year
+    // Example, parseInt(totalDays / 365) = 1, add 15, year is 2016
+    var yearAsInt = parseInt(totalDays / 365) + 15;
+    // Multiple by 1000 to get in YYDDD format, i.e. 15000 or 16000
+    var year = yearAsInt * 1000;
+    // Add the remaining days to get the julian day for that year
+    var julianDay = totalDays % 365;
+    // Add julian to year to get the data value
+    var date = year + julianDay;
+    // Convert the blue band to a string and pad with 0's to three digits
+    // It's rarely not three digits, except for cases where there is an intensity value and no date/confidence.
+    // This is due to bilinear resampling
+    var band3Str = pad(pixel[2]);
+    // Parse confidence, confidence is stored as 1/2, subtract 1 so it's values are 0/1
+    var confidence = parseInt(band3Str[0]) - 1;
+    // Parse raw intensity to make it visible, it is the second and third character in blue band, it's range is 1 - 55
+    var rawIntensity = parseInt(band3Str.slice(1, 3));
+    // Scale it to make it visible
+    var intensity = rawIntensity * 50;
+    // Prevent intensity from being higher then the max value
+    if (intensity > 255) { intensity = 255; }
+    // Return all components needed for filtering/labeling
+    return {
+      confidence: confidence,
+      intensity: intensity,
+      date: date
+    };
+  };
+
+  /**
+  * @description Simple left-pad function
+  */
+  function pad (number) {
+    var str = '00' + number;
+    return str.slice(str.length - 3);
+  }
+
+  function getTranslate (position) {
+    return 'translate3d(' + position.x + 'px, ' + position.y + 'px, 0)';
+  }
+
+  return declare('TileCanvasLayer', [Layer], {
+    /**
+    * @description Override Esri Constructor
+    */
+    constructor: function constructor (options) {
+      //- Mixin provided options with the defaults
+      this.options = lang.mixin({
+        urlTemplate: 'http://wri-tiles.s3.amazonaws.com/glad_test/test2/{z}/{x}/{y}.png',
+        minDateValue: 15000,
+        maxDateValue: 16365,
+        tileSize: 256,
+        maxZoom: 12
+      }, options);
+      //- Set Esri Layer Properties
+      this.loaded = this.options.loaded || true;
+      this.visible = this.options.visible || true;
+      //- Create a cache to optimize this layer
+      this.tiles = {};
+      this.position = { x: 0, y: 0 };
+      //- Log if canvas is not supported
+      if (!supportsCanvas()) {
+        console.error('Your browser does not support canvas');
+      }
+
+      this.onLoad(this);
+    },
+
+    /**
+    * @description Override _setMap method, called when the layer is added to the map
+    * @return {Element} must return a HTML element
+    */
+    _setMap: function _setMap (map, container) {
+      this._map = map;
+      //- Create a div to contain all the canvas tiles
+      this._container = document.createElement('div');
+      this._container.style.display = this.visible ? 'block' : 'none';
+      this._container.style.transform = getTranslate(this.position);
+      this._container.style.position = 'absolute';
+      this._container.style.height = '100%';
+      this._container.style.width = '100%';
+      this._container.style.left = 0;
+      this._container.style.top = 0;
+      //- Set up a listener to fetch tiles
+      map.on('extent-change', this.extentChanged.bind(this));
+      map.on('pan', this.onPan.bind(this));
+      map.on('pan-end', this.onPanEnd.bind(this));
+      map.on('zoom-start', this.reset.bind(this));
+      return this._container;
+    },
+
+    /**
+    * @description Override _unsetMap method, called when the layer is removed from the map
+    */
+    _unsetMap: function _unsetMap (map, container) {
+      this._map = null;
+    },
+
+    /**
+    * @description Method for start the process for rendering canvases as tiles
+    */
+    extentChanged: function extentChanged () {
+      if (!this.visible) { return; }
+
+      var resolution = this._map.getResolution(),
+          level = this._map.getLevel(),
+          extent = this._map.extent,
+          rowMin, rowMax,
+          colMin, colMax,
+          tileInfos;
+
+      //- Get the bounds of the tiles row and columns from extent, tileInfo, and resolution
+      rowMin = getRow(extent.ymax, resolution); // These two seem to be reversed??, May need to check something on that
+      rowMax = getRow(extent.ymin, resolution);
+      colMin = getColumn(extent.xmin, resolution);
+      colMax = getColumn(extent.xmax, resolution);
+
+      //- Get a range of tiles I need for this extent
+      tileInfos = getTileInfos(rowMin, colMin, rowMax, colMax, level);
+      //- Get the tile and update the map
+      tileInfos.forEach(function (info) {
+        this.getCanvasTile(info);
+      }, this);
+    },
+
+    /**
+    * @description Get the tile from the cache or from the server if not cached
+    * @return {object} canvasData
+    */
+    getCanvasTile: function getCanvasTile (info) {
+      var id = this._getTileId(info),
+          canvas, data, url;
+
+      // Return if their is a cached tile
+      if (this.tiles[id]) {
+        this.drawCanvasTile(this.tiles[id]);
+        return;
+      }
+
+      url = this.getTileUrl(info);
+      this.getImage(url, function (image) {
+        // Create the canvas element for the tile, will need to set position on it later
+        canvas = document.createElement('canvas');
+        canvas.height = this.options.tileSize;
+        canvas.width = this.options.tileSize;
+        canvas.style.position = 'absolute';
+        canvas.setAttribute('id', id);
+
+        data = {
+          canvas: canvas,
+          image: image,
+          x: info.x,
+          y: info.y,
+          z: info.z,
+          id: id
+        };
+
+        this._cacheTile(data);
+        this.drawCanvasTile(data);
+      }.bind(this));
+    },
+
+    /**
+    * @description Takes some canvas data and add it to the map
+    */
+    drawCanvasTile: function drawCanvasTile (canvasData) {
+      var longitude = getLongFromTile(canvasData.x, canvasData.z),
+          latitude = getLatFromTile(canvasData.y, canvasData.z),
+          coords = this._map.toScreen(new Point(longitude, latitude)),
+          height = canvasData.image.height,
+          width = canvasData.image.width,
+          canvas = canvasData.canvas,
+          imageData,
+          context;
+
+      //- Put the canvas in the correct position and append it to the container
+      // canvas.style.left = coords.x + 'px';
+      // canvas.style.top = coords.y + 'px';
+
+      if (!canvas.parentElement) {
+        // canvas.style.transform = 'translate(' + coords.x +'px, ' + coords.y + 'px)';
+        var currentPosition = {
+          x: Math.abs(this.position.x) + coords.x,
+          y: Math.abs(this.position.y) + coords.y
+        };
+        canvas.style.transform = getTranslate(currentPosition);
+        context = canvas.getContext('2d');
+        context.drawImage(canvasData.image, 0, 0, width, height);
+        imageData = context.getImageData(0, 0, width, height);
+        imageData.data = this.filterData(imageData.data, [0, 1]); //this.confidence
+        context.putImageData(imageData, 0, 0);
+        this._container.appendChild(canvas);
+      }
+    },
+
+    refreshTiles: function refreshTiles () {
+      Object.keys(this.tiles).forEach(function (key) {
+        var tile = this.tiles[key];
+        var context = tile.canvas.getContext('2d');
+        context.drawImage(tile.image, 0, 0, tile.image.width, tile.image.height);
+        var imageData = context.getImageData(0, 0, tile.image.width, tile.image.height);
+        imageData.data = this.filterData(imageData.data, [0, 1]); //this.confidence
+        context.putImageData(imageData, 0, 0);
+
+      }, this);
+    },
+
+    /**
+    * @description Filter the data, this should be removed and implemented by a parent layer that extends this layer
+    * @return {array} imageData
+    */
+    filterData: function filterData (data, confidence) {
+      for (var i = 0; i < data.length; i += 4) {
+        // Decode the rgba/pixel so I can filter on confidence and date ranges
+        var values = decodeDate(data.slice(i, i + 4));
+        //- Check against confidence, min date, and max date
+        if (
+          values.date >= this.options.minDateValue &&
+          values.date <= this.options.maxDateValue &&
+          confidence.indexOf(values.confidence) > -1
+        ) {
+          // Set the alpha to the intensity
+          data[i + 3] = values.intensity;
+          // Make the pixel pink for glad alerts
+          // Note, this may mess up the decode date function if it's called at a future date as the decoded information comes from the pixel
+          data[i] = 220; // R
+          data[i + 1] = 102; // G
+          data[i + 2] = 153; // B
+        } else {
+          // Hide the pixel
+          data[i + 3] = 0;
+        }
+      }
+      return data;
+    },
+
+    /**
+    * @description Return url for the tile
+    * @return {string}
+    */
+    getTileUrl: function getTileUrl (tile) {
+      return this.options.urlTemplate.replace('{x}', tile.x).replace('{y}', tile.y).replace('{z}', tile.z);
+    },
+
+    /**
+    * Fetch the tile image and pass it back through the callback
+    */
+    getImage: function getImage (url, callback) {
+      var xhr = new XMLHttpRequest();
+
+      xhr.onload = function () {
+        var objecturl = URL.createObjectURL(this.response);
+        var image = new Image();
+
+        image.onload = function () {
+          callback(image);
+          URL.revokeObjectURL(objecturl);
+        };
+        image.src = objecturl;
+      };
+
+      xhr.open('GET', url, true);
+      xhr.responseType = 'blob';
+      xhr.send();
+    },
+
+    /**
+    * @description Remove the canvas tile from the cache and the map
+    */
+    removeCanvasTile: function removeCanvasTile (key) {
+      document.getElementById(key).remove();
+    },
+
+    /**
+    * @description Clear the context of the canvas
+    */
+    onPan: function onPan (evt) {
+      var delta = evt.delta;
+      //- Update the current position
+      this._container.style.transform = getTranslate({
+        x: this.position.x + delta.x,
+        y: this.position.y + delta.y
+      });
+    },
+
+    onPanEnd: function onPanEnd (evt) {
+      var delta = evt.delta;
+      this.position = {
+        x: this.position.x + delta.x,
+        y: this.position.y + delta.y
+      };
+    },
+
+    reset: function reset () {
+      // Delete tiles from other zoom levels
+      Object.keys(this.tiles).forEach(function (key) {
+        this.tiles[key].canvas.remove();
+        delete this.tiles[key];
+      }, this);
+      // Reset the position
+      this.position = { x: 0, y: 0 };
+      this._container.style.transform = getTranslate(this.position);
+    },
+
+    /**
+    * @description Return unique id for the tile
+    * @return {string} id for the tile
+    */
+    _getTileId: function _getTileId (tile) {
+      return tile.x + '_' + tile.y + '_' + tile.z;
+    },
+
+    /**
+    * @description Cache the tile based on its unique id
+    */
+    _cacheTile: function _cacheTile (data) {
+      this.tiles[data.id] = data;
+    },
+
+
+    ////////////////////
+    // PUBLIC METHODS //
+    ////////////////////
+    setDateRange: function (minDate, maxDate) {
+      this.options.minDateValue = parseInt(minDate);
+      this.options.maxDateValue = parseInt(maxDate);
+      this.refreshTiles();
+    }
+
+  });
+
+});
