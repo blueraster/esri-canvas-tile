@@ -398,7 +398,6 @@ define([
     * TODO: Move this out of the module and make a private function, inject all neceeary dependencies
     */
     filterData: function (data, confidence) {
-      console.log(data.length);
       for (var i = 0; i < data.length; i += 4) {
         // Decode the rgba/pixel so I can filter on confidence and date ranges
         var values = decodeDate(data.slice(i, i + 4));

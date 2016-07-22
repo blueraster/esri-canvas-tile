@@ -12,13 +12,11 @@ define([
     zoom: 7
   });
 
-  var gladLayer = new CanvasLayer({
-    id: 'gladLayer'
-  });
+  //- Version 1
+  var gladLayer = new CanvasLayer({ id: 'gladLayer' });
 
-  var testLayer = new TileCanvasLayer({
-    id: 'testLayer'
-  });
+  //- Version 2
+  var testLayer = new TileCanvasLayer({ id: 'testLayer' });
 
   map.addLayers([testLayer]);
 
@@ -67,7 +65,8 @@ define([
   document.getElementById('confidence-level').addEventListener('change', function (evt) {
     var target = evt.target;
     // Acceptable values are 'all' or 'confirmed' only
-    gladLayer.setConfidenceLevel(target.value);
+    // gladLayer.setConfidenceLevel(target.value);
+    testLayer.setConfidenceLevel(target.value);
   });
 
   // For easier debugging

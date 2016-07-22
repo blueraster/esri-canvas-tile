@@ -25,6 +25,18 @@ define([
   };
 
   /**
+  * Default Values
+  */
+  var DEFAULTS = {
+    urlTemplate: 'http://wri-tiles.s3.amazonaws.com/glad_test/test2/{z}/{x}/{y}.png',
+    minDateValue: 15000,
+    maxDateValue: 16365,
+    confidence: [0, 1],
+    tileSize: 256,
+    maxZoom: 12
+  };
+
+  /**
   * @description Simple check for canvas support
   * @return {boolean}
   */
@@ -142,13 +154,7 @@ define([
     */
     constructor: function constructor (options) {
       //- Mixin provided options with the defaults
-      this.options = lang.mixin({
-        urlTemplate: 'http://wri-tiles.s3.amazonaws.com/glad_test/test2/{z}/{x}/{y}.png',
-        minDateValue: 15000,
-        maxDateValue: 16365,
-        tileSize: 256,
-        maxZoom: 12
-      }, options);
+      this.options = lang.mixin(DEFAULTS, options);
       //- Set Esri Layer Properties
       this.loaded = this.options.loaded || true;
       this.visible = this.options.visible || true;
@@ -212,6 +218,18 @@ define([
       colMin = getColumn(extent.xmin, resolution);
       colMax = getColumn(extent.xmax, resolution);
 
+      //- If the zoom level is greater than the max zoom, get scaled values
+      if (level > this.options.maxZoom) {
+        var steps = this._getZoomSteps(level);
+        var min = this._getScaledCoords(colMin, rowMin, steps);
+        var max = this._getScaledCoords(colMax, rowMax, steps);
+        level = this.options.maxZoom;
+        colMin = min[0] - 1;
+        rowMin = min[1] - 1;
+        colMax = max[0] + 1;
+        rowMax = max[1] + 1;
+      }
+
       //- Get a range of tiles I need for this extent
       tileInfos = getTileInfos(rowMin, colMin, rowMax, colMax, level);
       //- Get the tile and update the map
@@ -261,30 +279,49 @@ define([
     * @description Takes some canvas data and add it to the map
     */
     _drawCanvasTile: function _drawCanvasTile (canvasData) {
+      'use asm';
       var longitude = getLongFromTile(canvasData.x, canvasData.z),
           latitude = getLatFromTile(canvasData.y, canvasData.z),
           coords = this._map.toScreen(new Point(longitude, latitude)),
-          height = canvasData.image.height,
-          width = canvasData.image.width,
+          realZoom = this._map.getLevel(),
           canvas = canvasData.canvas,
+          sX, sY, sWidth, sHeight,
+          currentPosition,
           imageData,
-          context;
+          context,
+          steps;
 
       //- Put the canvas in the correct position and append it to the container
-      // canvas.style.left = coords.x + 'px';
-      // canvas.style.top = coords.y + 'px';
-
       if (!canvas.parentElement) {
-        // canvas.style.transform = 'translate(' + coords.x +'px, ' + coords.y + 'px)';
-        var currentPosition = {
+        context = canvas.getContext('2d');
+        currentPosition = {
           x: Math.abs(this.position.x) + coords.x,
           y: Math.abs(this.position.y) + coords.y
         };
         canvas.style.transform = getTranslate(currentPosition);
-        context = canvas.getContext('2d');
-        context.drawImage(canvasData.image, 0, 0, width, height);
-        imageData = context.getImageData(0, 0, width, height);
-        imageData.data = this.filterData(imageData.data, [0, 1]); //this.confidence
+        //- Scale the tile if we are past maxZoom
+        if (realZoom > this.options.maxZoom) {
+          steps = this._getZoomSteps(realZoom);
+          sX = (256 / Math.pow(2, steps) * (canvasData.x % Math.pow(2, steps)));
+          sY = (256 / Math.pow(2, steps) * (canvasData.y % Math.pow(2, steps)));
+          sWidth = (256 / Math.pow(2, steps));
+          sHeight = (256 / Math.pow(2, steps));
+
+          canvas.height = canvas.width = (256 * Math.pow(2, steps));
+          // canvasData.image.style.width = (256 * Math.pow(2, steps));
+          // canvasData.image.style.height = (256 * Math.pow(2, steps));
+          // context.imageSmoothingEnabled = false;
+          // context.mozImageSmoothingEnabled = false;
+          // context.drawImage(canvasData.image, 0, 0, canvas.width, canvas.height);
+          context.imageSmoothingEnabled = false;
+          context.mozImageSmoothingEnabled = false;
+          context.drawImage(canvasData.image, sX, sY, sWidth, sHeight, 0, 0, 256, 256);
+        } else {
+          context.drawImage(canvasData.image, 0, 0);
+        }
+
+        imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        imageData.data = this.filterData(imageData.data, this.options.confidence);
         context.putImageData(imageData, 0, 0);
         this._container.appendChild(canvas);
       }
@@ -299,11 +336,10 @@ define([
       Object.keys(this.tiles).forEach(function (key) {
         var tile = this.tiles[key];
         var context = tile.canvas.getContext('2d');
-        context.drawImage(tile.image, 0, 0, tile.image.width, tile.image.height);
-        var imageData = context.getImageData(0, 0, tile.image.width, tile.image.height);
-        imageData.data = this.filterData(imageData.data, [0, 1]); //this.confidence
+        context.drawImage(tile.image, 0, 0, tile.canvas.width, tile.canvas.height);
+        var imageData = context.getImageData(0, 0, tile.canvas.width, tile.canvas.height);
+        imageData.data = this.filterData(imageData.data, this.options.confidence);
         context.putImageData(imageData, 0, 0);
-
       }, this);
     },
 
@@ -383,12 +419,27 @@ define([
       this.tiles[data.id] = data;
     },
 
+    /**
+    * @description Get tile locations for tiles when the map is zoomed past the max zoom
+    */
+    _getScaledCoords: function _getScaledCoords (x, y, steps) {
+      x = Math.floor(x / Math.pow(2, steps));
+      y = Math.floor(y / Math.pow(2, steps));
+      return [x, y];
+    },
+
+    /**
+    * @description Get number of levels past max zoom
+    */
+    _getZoomSteps: function _getZoomSteps (level) {
+      return level - this.options.maxZoom;
+    },
+
     //////////////////////////////////////////////////////
     // Methods that should be in a Class that extends   //
     // this one so we can make this class more flexible //
     //////////////////////////////////////////////////////
-
-    /** - This coule be moved out to a class that extends this layer
+    /**
     * @description Filter the data, this should be removed and implemented by a parent layer that extends this layer
     * @return {array} imageData
     */
@@ -426,16 +477,19 @@ define([
       this._refreshTiles();
     },
 
-    setConfidenceLevel: function setConfidenceLevel () {
-
+    setConfidenceLevel: function setConfidenceLevel (confidence) {
+      this.options.confidence = confidence === 'all' ? [0, 1] : [1];
+      this._refreshTiles();
     },
 
     show: function show () {
-
+      this.visible = true;
+      this._container.style.display = 'block';
     },
 
     hide: function hide () {
-      
+      this.visible = false;
+      this._container.style.display = 'none';
     }
 
   });
