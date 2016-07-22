@@ -424,6 +424,18 @@ define([
       this.options.minDateValue = parseInt(minDate);
       this.options.maxDateValue = parseInt(maxDate);
       this._refreshTiles();
+    },
+
+    setConfidenceLevel: function setConfidenceLevel () {
+
+    },
+
+    show: function show () {
+
+    },
+
+    hide: function hide () {
+      
     }
 
   });
