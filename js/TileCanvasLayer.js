@@ -129,6 +129,9 @@ define([
     return str.slice(str.length - 3);
   }
 
+  /**
+  * @description Simple method to return a valid css translate3d string
+  */
   function getTranslate (position) {
     return 'translate3d(' + position.x + 'px, ' + position.y + 'px, 0)';
   }
@@ -176,10 +179,10 @@ define([
       this._container.style.left = 0;
       this._container.style.top = 0;
       //- Set up a listener to fetch tiles
-      map.on('extent-change', this.extentChanged.bind(this));
-      map.on('pan', this.onPan.bind(this));
-      map.on('pan-end', this.onPanEnd.bind(this));
-      map.on('zoom-start', this.reset.bind(this));
+      map.on('extent-change', this._extentChanged.bind(this));
+      map.on('pan', this._onPan.bind(this));
+      map.on('pan-end', this._onPanEnd.bind(this));
+      map.on('zoom-start', this._reset.bind(this));
       return this._container;
     },
 
@@ -193,7 +196,7 @@ define([
     /**
     * @description Method for start the process for rendering canvases as tiles
     */
-    extentChanged: function extentChanged () {
+    _extentChanged: function _extentChanged () {
       if (!this.visible) { return; }
 
       var resolution = this._map.getResolution(),
@@ -213,7 +216,7 @@ define([
       tileInfos = getTileInfos(rowMin, colMin, rowMax, colMax, level);
       //- Get the tile and update the map
       tileInfos.forEach(function (info) {
-        this.getCanvasTile(info);
+        this._getCanvasTile(info);
       }, this);
     },
 
@@ -221,18 +224,18 @@ define([
     * @description Get the tile from the cache or from the server if not cached
     * @return {object} canvasData
     */
-    getCanvasTile: function getCanvasTile (info) {
+    _getCanvasTile: function _getCanvasTile (info) {
       var id = this._getTileId(info),
           canvas, data, url;
 
       // Return if their is a cached tile
       if (this.tiles[id]) {
-        this.drawCanvasTile(this.tiles[id]);
+        this._drawCanvasTile(this.tiles[id]);
         return;
       }
 
-      url = this.getTileUrl(info);
-      this.getImage(url, function (image) {
+      url = this._getTileUrl(info);
+      this._getImage(url, function (image) {
         // Create the canvas element for the tile, will need to set position on it later
         canvas = document.createElement('canvas');
         canvas.height = this.options.tileSize;
@@ -250,14 +253,14 @@ define([
         };
 
         this._cacheTile(data);
-        this.drawCanvasTile(data);
+        this._drawCanvasTile(data);
       }.bind(this));
     },
 
     /**
     * @description Takes some canvas data and add it to the map
     */
-    drawCanvasTile: function drawCanvasTile (canvasData) {
+    _drawCanvasTile: function _drawCanvasTile (canvasData) {
       var longitude = getLongFromTile(canvasData.x, canvasData.z),
           latitude = getLatFromTile(canvasData.y, canvasData.z),
           coords = this._map.toScreen(new Point(longitude, latitude)),
@@ -287,7 +290,12 @@ define([
       }
     },
 
-    refreshTiles: function refreshTiles () {
+    /**
+    * @description Filters the image data in the current tile cache
+    * You should call this after you update any properties used in the filterData function
+    * For this Glad Layer, it is maxDateValue, minDateValue, and confidence,
+    */
+    _refreshTiles: function _refreshTiles () {
       Object.keys(this.tiles).forEach(function (key) {
         var tile = this.tiles[key];
         var context = tile.canvas.getContext('2d');
@@ -300,6 +308,87 @@ define([
     },
 
     /**
+    * @description Return url for the tile
+    * @return {string}
+    */
+    _getTileUrl: function _getTileUrl (tile) {
+      return this.options.urlTemplate.replace('{x}', tile.x).replace('{y}', tile.y).replace('{z}', tile.z);
+    },
+
+    /**
+    * Fetch the tile image and pass it back through the callback
+    */
+    _getImage: function _getImage (url, callback) {
+      var xhr = new XMLHttpRequest();
+
+      xhr.onload = function () {
+        var objecturl = URL.createObjectURL(this.response);
+        var image = new Image();
+
+        image.onload = function () {
+          callback(image);
+          URL.revokeObjectURL(objecturl);
+        };
+        image.src = objecturl;
+      };
+
+      xhr.open('GET', url, true);
+      xhr.responseType = 'blob';
+      xhr.send();
+    },
+
+    /**
+    * @description Clear the context of the canvas
+    */
+    _onPan: function _onPan (evt) {
+      var delta = evt.delta;
+      //- Update the current position
+      this._container.style.transform = getTranslate({
+        x: this.position.x + delta.x,
+        y: this.position.y + delta.y
+      });
+    },
+
+    _onPanEnd: function _onPanEnd (evt) {
+      var delta = evt.delta;
+      this.position = {
+        x: this.position.x + delta.x,
+        y: this.position.y + delta.y
+      };
+    },
+
+    _reset: function _reset () {
+      // Delete tiles from other zoom levels
+      Object.keys(this.tiles).forEach(function (key) {
+        this.tiles[key].canvas.remove();
+        delete this.tiles[key];
+      }, this);
+      // Reset the position
+      this.position = { x: 0, y: 0 };
+      this._container.style.transform = getTranslate(this.position);
+    },
+
+    /**
+    * @description Return unique id for the tile
+    * @return {string} id for the tile
+    */
+    _getTileId: function _getTileId (tile) {
+      return tile.x + '_' + tile.y + '_' + tile.z;
+    },
+
+    /**
+    * @description Cache the tile based on its unique id
+    */
+    _cacheTile: function _cacheTile (data) {
+      this.tiles[data.id] = data;
+    },
+
+    //////////////////////////////////////////////////////
+    // Methods that should be in a Class that extends   //
+    // this one so we can make this class more flexible //
+    //////////////////////////////////////////////////////
+
+    /** - This coule be moved out to a class that extends this layer
     * @description Filter the data, this should be removed and implemented by a parent layer that extends this layer
     * @return {array} imageData
     */
@@ -328,97 +417,13 @@ define([
       return data;
     },
 
-    /**
-    * @description Return url for the tile
-    * @return {string}
-    */
-    getTileUrl: function getTileUrl (tile) {
-      return this.options.urlTemplate.replace('{x}', tile.x).replace('{y}', tile.y).replace('{z}', tile.z);
-    },
-
-    /**
-    * Fetch the tile image and pass it back through the callback
-    */
-    getImage: function getImage (url, callback) {
-      var xhr = new XMLHttpRequest();
-
-      xhr.onload = function () {
-        var objecturl = URL.createObjectURL(this.response);
-        var image = new Image();
-
-        image.onload = function () {
-          callback(image);
-          URL.revokeObjectURL(objecturl);
-        };
-        image.src = objecturl;
-      };
-
-      xhr.open('GET', url, true);
-      xhr.responseType = 'blob';
-      xhr.send();
-    },
-
-    /**
-    * @description Remove the canvas tile from the cache and the map
-    */
-    removeCanvasTile: function removeCanvasTile (key) {
-      document.getElementById(key).remove();
-    },
-
-    /**
-    * @description Clear the context of the canvas
-    */
-    onPan: function onPan (evt) {
-      var delta = evt.delta;
-      //- Update the current position
-      this._container.style.transform = getTranslate({
-        x: this.position.x + delta.x,
-        y: this.position.y + delta.y
-      });
-    },
-
-    onPanEnd: function onPanEnd (evt) {
-      var delta = evt.delta;
-      this.position = {
-        x: this.position.x + delta.x,
-        y: this.position.y + delta.y
-      };
-    },
-
-    reset: function reset () {
-      // Delete tiles from other zoom levels
-      Object.keys(this.tiles).forEach(function (key) {
-        this.tiles[key].canvas.remove();
-        delete this.tiles[key];
-      }, this);
-      // Reset the position
-      this.position = { x: 0, y: 0 };
-      this._container.style.transform = getTranslate(this.position);
-    },
-
-    /**
-    * @description Return unique id for the tile
-    * @return {string} id for the tile
-    */
-    _getTileId: function _getTileId (tile) {
-      return tile.x + '_' + tile.y + '_' + tile.z;
-    },
-
-    /**
-    * @description Cache the tile based on its unique id
-    */
-    _cacheTile: function _cacheTile (data) {
-      this.tiles[data.id] = data;
-    },
-
-
     ////////////////////
     // PUBLIC METHODS //
     ////////////////////
-    setDateRange: function (minDate, maxDate) {
+    setDateRange: function setDateRange (minDate, maxDate) {
       this.options.minDateValue = parseInt(minDate);
       this.options.maxDateValue = parseInt(maxDate);
-      this.refreshTiles();
+      this._refreshTiles();
     }
 
   });
