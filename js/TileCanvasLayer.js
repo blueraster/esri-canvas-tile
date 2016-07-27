@@ -446,7 +446,8 @@ define([
     filterData: function filterData (data, confidence) {
       for (var i = 0; i < data.length; i += 4) {
         // Decode the rgba/pixel so I can filter on confidence and date ranges
-        var values = decodeDate(data.slice(i, i + 4));
+        var slice = [data[i], data[i + 1], data[i + 2]];
+        var values = decodeDate(slice);
         //- Check against confidence, min date, and max date
         if (
           values.date >= this.options.minDateValue &&
