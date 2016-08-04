@@ -280,11 +280,10 @@ define([
           coords = this._map.toScreen(new Point(longitude, latitude)),
           size = this.options.tileSize,
           canvas = canvasData.canvas,
-          sX, sY, sWidth, sHeight,
           currentPosition,
           imageData,
           context,
-          steps;
+          info;
 
       //- Put the canvas in the correct position and append it to the container
       if (!canvas.parentElement) {
@@ -296,14 +295,10 @@ define([
         canvas.style.transform = getTranslate(currentPosition);
         //- Scale the tile if we are past maxZoom
         if (canvasData.z > this.options.maxZoom) {
-          steps = this._getZoomSteps(canvasData.z);
-          sX = (size / Math.pow(2, steps) * (canvasData.x % Math.pow(2, steps)));
-          sY = (size / Math.pow(2, steps) * (canvasData.y % Math.pow(2, steps)));
-          sWidth = (size / Math.pow(2, steps));
-          sHeight = (size / Math.pow(2, steps));
+          info = this._getSubrectangleInfo(canvasData);
           context.imageSmoothingEnabled = false;
           context.mozImageSmoothingEnabled = false;
-          context.drawImage(canvasData.image, sX, sY, sWidth, sHeight, 0, 0, size, size);
+          context.drawImage(canvasData.image, info.sX, info.sY, info.sWidth, info.sHeight, 0, 0, size, size);
         } else {
           context.drawImage(canvasData.image, 0, 0);
         }
@@ -325,18 +320,15 @@ define([
         var tile = this.tiles[key],
             context = tile.canvas.getContext('2d'),
             size = this.options.tileSize,
-            imageData;
+            imageData,
+            info;
 
         // We are scaling
         if (tile.z > this.options.maxZoom) {
-          steps = this._getZoomSteps(tile.z);
-          sX = (size / Math.pow(2, steps) * (tile.x % Math.pow(2, steps)));
-          sY = (size / Math.pow(2, steps) * (tile.y % Math.pow(2, steps)));
-          sWidth = (size / Math.pow(2, steps));
-          sHeight = (size / Math.pow(2, steps));
+          info = this._getSubrectangleInfo(tile);
           context.imageSmoothingEnabled = false;
           context.mozImageSmoothingEnabled = false;
-          context.drawImage(tile.image, sX, sY, sWidth, sHeight, 0, 0, size, size);
+          context.drawImage(tile.image, info.sX, info.sY, info.sWidth, info.sHeight, 0, 0, size, size);
         } else {
           context.drawImage(tile.image, 0, 0, size, size);
         }
@@ -345,6 +337,30 @@ define([
         imageData.data = this.filterData(imageData.data, this.options.confidence);
         context.putImageData(imageData, 0, 0);
       }, this);
+    },
+
+    /**
+    * @typedef SubRectangleInfo
+    * @type Object
+    * @property {number} sX - x coordinate of the sub-rectangle to use for the scaled image
+    * @property {number} sY - y coordinate of the sub-rectangle to use for the scaled image
+    * @property {number} sWidth - width of the sub-rectangle to use for the scaled image
+    * @property {number} sHeight - height of the sub-rectangle to use for the scaled image
+    */
+
+    /**
+    * @description Get the sub-rectangle's x, y, width, and height of the image for this tile
+    * @return {object} SubRectangleInfo
+    */
+    _getSubrectangleInfo: function _getSubrectangleInfo (tile) {
+      var steps = this._getZoomSteps(tile.z)
+      var size = this.options.tileSize;
+      return {
+        sX: (size / Math.pow(2, steps) * (tile.x % Math.pow(2, steps))),
+        sY: (size / Math.pow(2, steps) * (tile.y % Math.pow(2, steps))),
+        sWidth: size / Math.pow(2, steps),
+        sHeight: size / Math.pow(2, steps)
+      };
     },
 
     /**
