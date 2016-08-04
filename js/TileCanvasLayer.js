@@ -218,18 +218,6 @@ define([
       colMin = getColumn(extent.xmin, resolution);
       colMax = getColumn(extent.xmax, resolution);
 
-      //- If the zoom level is greater than the max zoom, get scaled values
-      if (level > this.options.maxZoom) {
-        var steps = this._getZoomSteps(level);
-        var min = this._getScaledCoords(colMin, rowMin, steps);
-        var max = this._getScaledCoords(colMax, rowMax, steps);
-        level = this.options.maxZoom;
-        colMin = min[0] - 1;
-        rowMin = min[1] - 1;
-        colMax = max[0] + 1;
-        rowMax = max[1] + 1;
-      }
-
       //- Get a range of tiles I need for this extent
       tileInfos = getTileInfos(rowMin, colMin, rowMax, colMax, level);
       //- Get the tile and update the map
@@ -252,7 +240,14 @@ define([
         return;
       }
 
-      url = this._getTileUrl(info);
+      //- If we are past max zoom, fetch tiles from parent tiles
+      if (info.z > this.options.maxZoom) {
+        var coords = this._getScaledCoords(info.x, info.y, this._getZoomSteps(info.z));
+        url = this._getTileUrl({ x: coords[0], y: coords[1], z: 12 });
+      } else {
+        url = this._getTileUrl(info);
+      }
+
       this._getImage(url, function (image) {
         // Create the canvas element for the tile, will need to set position on it later
         canvas = document.createElement('canvas');
@@ -283,7 +278,7 @@ define([
       var longitude = getLongFromTile(canvasData.x, canvasData.z),
           latitude = getLatFromTile(canvasData.y, canvasData.z),
           coords = this._map.toScreen(new Point(longitude, latitude)),
-          realZoom = this._map.getLevel(),
+          size = this.options.tileSize,
           canvas = canvasData.canvas,
           sX, sY, sWidth, sHeight,
           currentPosition,
@@ -300,22 +295,15 @@ define([
         };
         canvas.style.transform = getTranslate(currentPosition);
         //- Scale the tile if we are past maxZoom
-        if (realZoom > this.options.maxZoom) {
-          steps = this._getZoomSteps(realZoom);
-          // sX = (256 / Math.pow(2, steps) * (canvasData.x % Math.pow(2, steps)));
-          // sY = (256 / Math.pow(2, steps) * (canvasData.y % Math.pow(2, steps)));
-          // sWidth = (256 / Math.pow(2, steps));
-          // sHeight = (256 / Math.pow(2, steps));
-
-          canvas.height = canvas.width = (256 * Math.pow(2, steps));
-          canvasData.image.style.width = (256 * Math.pow(2, steps));
-          canvasData.image.style.height = (256 * Math.pow(2, steps));
+        if (canvasData.z > this.options.maxZoom) {
+          steps = this._getZoomSteps(canvasData.z);
+          sX = (size / Math.pow(2, steps) * (canvasData.x % Math.pow(2, steps)));
+          sY = (size / Math.pow(2, steps) * (canvasData.y % Math.pow(2, steps)));
+          sWidth = (size / Math.pow(2, steps));
+          sHeight = (size / Math.pow(2, steps));
           context.imageSmoothingEnabled = false;
           context.mozImageSmoothingEnabled = false;
-          context.drawImage(canvasData.image, 0, 0, canvas.width, canvas.height);
-          // context.imageSmoothingEnabled = false;
-          // context.mozImageSmoothingEnabled = false;
-          // context.drawImage(canvasData.image, sX, sY, sWidth, sHeight, 0, 0, 256, 256);
+          context.drawImage(canvasData.image, sX, sY, sWidth, sHeight, 0, 0, size, size);
         } else {
           context.drawImage(canvasData.image, 0, 0);
         }
@@ -334,10 +322,26 @@ define([
     */
     _refreshTiles: function _refreshTiles () {
       Object.keys(this.tiles).forEach(function (key) {
-        var tile = this.tiles[key];
-        var context = tile.canvas.getContext('2d');
-        context.drawImage(tile.image, 0, 0, tile.canvas.width, tile.canvas.height);
-        var imageData = context.getImageData(0, 0, tile.canvas.width, tile.canvas.height);
+        var tile = this.tiles[key],
+            context = tile.canvas.getContext('2d'),
+            size = this.options.tileSize,
+            imageData;
+
+        // We are scaling
+        if (tile.z > this.options.maxZoom) {
+          steps = this._getZoomSteps(tile.z);
+          sX = (size / Math.pow(2, steps) * (tile.x % Math.pow(2, steps)));
+          sY = (size / Math.pow(2, steps) * (tile.y % Math.pow(2, steps)));
+          sWidth = (size / Math.pow(2, steps));
+          sHeight = (size / Math.pow(2, steps));
+          context.imageSmoothingEnabled = false;
+          context.mozImageSmoothingEnabled = false;
+          context.drawImage(tile.image, sX, sY, sWidth, sHeight, 0, 0, size, size);
+        } else {
+          context.drawImage(tile.image, 0, 0, size, size);
+        }
+
+        imageData = context.getImageData(0, 0, size, size);
         imageData.data = this.filterData(imageData.data, this.options.confidence);
         context.putImageData(imageData, 0, 0);
       }, this);
