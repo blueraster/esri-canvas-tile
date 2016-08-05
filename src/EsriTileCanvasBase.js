@@ -365,7 +365,6 @@ export default declare('EsriTileCanvasBase', [Layer], {
   },
 
   //- Methods that can be leveraged by the child class to force interactions
-
   /**
   * @description Force refresh all tiles in the tilecache
   * @description this should be called anytime any variable used in your filter changes
@@ -410,7 +409,7 @@ export default declare('EsriTileCanvasBase', [Layer], {
 
   //- Methods that need to be implemented by the child class
   filter: function filter () {
-    throw new Error('The filter method must be implemented. It takes image data from context.getImageData().data and should return the same array.');
+    throw new Error('The filter method must be implemented. It filters image data from context.getImageData().data. and must return an array.');
   }
 
 });
