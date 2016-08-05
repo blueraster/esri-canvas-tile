@@ -102,7 +102,7 @@ export default declare('EsriTileCanvasBase', [Layer], {
     //- Mixin options with some defaults
     this.options = Object.assign({}, DEFAULTS, options);
     //- Set some default esri layer properties
-    this.visible = this.options.visible || true;
+    this.visible = this.options.visible !== undefined ? this.options.visible : true;
     this.loaded = true;
     if (this.options.id) { this.id = this.options.id; }
     //- Create a tile cache to optimize this layer
