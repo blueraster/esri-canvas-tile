@@ -1,5 +1,5 @@
 {
-  "plugins": ["transform-es2015-modules-amd"],
+  "plugins": ["transform-es2015-modules-amd"], 
   "presets": ["stage-0", "es2015"],
   "ignore": ["node_modules"]
 }

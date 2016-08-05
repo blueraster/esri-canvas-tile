@@ -1,5 +1,3 @@
-import SpatialReference from 'esri/SpatialReference';
-import screenUtils from 'esri/geometry/screenUtils';
 import declare from 'dojo/_base/declare';
 import Point from 'esri/geometry/Point';
 import Layer from 'esri/layers/layer';
@@ -100,12 +98,13 @@ export default declare('EsriTileCanvasBase', [Layer], {
   * @param {string} id - Id for this layer
   * @param {object} options - Set of options to use for the layer
   */
-  constructor: function constructor (id, options) {
+  constructor: function constructor (options) {
     //- Mixin options with some defaults
     this.options = Object.assign({}, DEFAULTS, options);
     //- Set some default esri layer properties
     this.visible = this.options.visible || true;
     this.loaded = true;
+    if (this.options.id) { this.id = this.options.id; }
     //- Create a tile cache to optimize this layer
     this.tiles = {};
     //- Store the position of the map, this is used to apply transforms
@@ -118,8 +117,8 @@ export default declare('EsriTileCanvasBase', [Layer], {
     }
     //- Template must be in a specific format for now
     //- Example: http://wri-tiles.s3.amazonaws.com/glad_test/test2/{z}/{x}/{y}.png
-    if (!this.options.urlTemplate) {
-      throw new Error('You must provide a \'urlTemplate\' in your options.');
+    if (!this.options.url) {
+      throw new Error('You must provide a \'url\' in your options.');
     }
 
     //- Trigger the parents onLoad functionality
@@ -292,7 +291,7 @@ export default declare('EsriTileCanvasBase', [Layer], {
       }
 
       const imageData = ctx.getImageData(0, 0, tileSize, tileSize);
-      imageData.data = this.filter(imageData.data);
+      imageData.data.set(this.filter(imageData.data));
       ctx.putImageData(imageData, 0, 0);
       this._container.appendChild(canvas);
     }
@@ -324,7 +323,7 @@ export default declare('EsriTileCanvasBase', [Layer], {
   * @return {string}
   */
   _getUrl: function _getUrl (tile) {
-    return this.options.urlTemplate.replace('{x}', tile.x).replace('{y}', tile.y).replace('{z}', tile.z);
+    return this.options.url.replace('{x}', tile.x).replace('{y}', tile.y).replace('{z}', tile.z);
   },
 
   /**
@@ -368,11 +367,11 @@ export default declare('EsriTileCanvasBase', [Layer], {
   //- Methods that can be leveraged by the child class to force interactions
 
   /**
-  * @description Force redraw all tiles in the tilecache
+  * @description Force refresh all tiles in the tilecache
   * @description this should be called anytime any variable used in your filter changes
   */
-  redraw: function redraw () {
-    Object.keys(this.tiles, key => {
+  refresh: function refresh () {
+    Object.keys(this.tiles).forEach(key => {
       const tile = this.tiles[key],
             ctx = tile.canvas.getContext('2d'),
             {tileSize} = this.options;
@@ -388,7 +387,7 @@ export default declare('EsriTileCanvasBase', [Layer], {
       }
 
       const imageData = ctx.getImageData(0, 0, tileSize, tileSize);
-      imageData.data = this.filter(imageData.data);
+      imageData.data.set(this.filter(imageData.data));
       ctx.putImageData(imageData, 0, 0);
     });
   },
@@ -411,8 +410,7 @@ export default declare('EsriTileCanvasBase', [Layer], {
 
   //- Methods that need to be implemented by the child class
   filter: function filter () {
-    throw new Error(`The filter method must be implemented.
-      It takes image data from context.getImageData().data and should return the same array.`);
+    throw new Error('The filter method must be implemented. It takes image data from context.getImageData().data and should return the same array.');
   }
 
 });

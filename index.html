@@ -58,10 +58,10 @@
         parseOnLoad: false,
         async: true,
         packages: [
-          { name: 'js', location: base + '/js' }
+          { name: 'js', location: base + '/build' }
         ],
         deps: ['dojo/domReady!'],
-        callback: function () { require(['js/main']); }
+        callback: function () { require(['js/app']); }
       };
     </script>
     <script src='//js.arcgis.com/3.17/init.js' async></script>
