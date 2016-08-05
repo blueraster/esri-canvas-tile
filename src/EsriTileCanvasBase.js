@@ -407,6 +407,13 @@ export default declare('EsriTileCanvasBase', [Layer], {
     this._container.style.display = 'none';
   },
 
+  /**
+  * @description set opacity on the layer
+  */
+  setOpacity: function setOpacity (value) {
+    this._container.style.opacity = value;
+  },
+
   //- Methods that need to be implemented by the child class
   filter: function filter () {
     throw new Error('The filter method must be implemented. It filters image data from context.getImageData().data. and must return an array.');
