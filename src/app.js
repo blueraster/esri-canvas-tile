@@ -9,7 +9,7 @@ var map = new EsriMap('map', {
 });
 
 const testLayer = new GladLayer({
-  url: 'http://wri-tiles.s3.amazonaws.com/glad_test/test2/{z}/{x}/{y}.png',
+  url: 'https://wri-tiles.s3.amazonaws.com/glad_prod/tiles/{z}/{x}/{y}.png',
   minDateValue: 15000,
   maxDateValue: 16365,
   confidence: [0, 1],

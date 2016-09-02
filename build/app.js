@@ -20,7 +20,7 @@ define(['esri/map', 'dojox/form/HorizontalRangeSlider', 'js/GladLayer'], functio
   });
 
   var testLayer = new _GladLayer2.default({
-    url: 'http://wri-tiles.s3.amazonaws.com/glad_test/test2/{z}/{x}/{y}.png',
+    url: 'https://wri-tiles.s3.amazonaws.com/glad_prod/tiles/{z}/{x}/{y}.png',
     minDateValue: 15000,
     maxDateValue: 16365,
     confidence: [0, 1],
