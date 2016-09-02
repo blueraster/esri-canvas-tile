@@ -5,7 +5,7 @@
   "main": "index.html",
   "scripts": {
     "start": "npm run babel -- -w",
-    "build": "",
+    "build": "npm run babel",
     "babel": "babel src --out-dir build",
     "test": "eslint src/*.js"
   },
