@@ -3,6 +3,3 @@ node_modules
 
 # System files
 .DS_Store
-
-# Built files
-build
