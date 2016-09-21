@@ -131,7 +131,7 @@ export default declare('EsriTileCanvasBase', [Layer], {
   */
   _setMap: function _setMap (map) {
     this._map = map;
-    //- Create a container element for al the canvas tiles
+    //- Create a container element for all the canvas tiles
     this._container = document.createElement('div');
     this._container.style.display = this.visible ? 'block' : 'none';
     this._container.style.transform = getTranslate(this.position);
